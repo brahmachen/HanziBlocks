@@ -2,168 +2,222 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>汉字乐高 - V2 严丝合缝版</title>
+    <title>汉字乐高 - V4 终极爽感版 (修复完美版)</title>
     <style>
-        body { 
-            margin: 0; padding: 0; overflow: hidden; 
-            /* 宣纸质感的米色背景 */
-            background-color: #f5f4ef; 
-            display: flex; justify-content: center; align-items: center; height: 100vh; 
-        }
-        canvas { 
-            /* 柔和的画布阴影 */
-            box-shadow: 0 20px 50px rgba(0,0,0,0.1); 
-            border-radius: 12px;
-        }
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #f5f4ef; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        canvas { box-shadow: 0 20px 50px rgba(0,0,0,0.1); border-radius: 12px; cursor: grab; }
+        canvas:active { cursor: grabbing; }
+        #hint { position: absolute; top: 20px; color: #7f8c8d; font-family: sans-serif; pointer-events: none; padding: 10px 20px; background: rgba(255,255,255,0.8); border-radius: 20px; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
 </head>
 <body>
-
+    <div id="hint">点我一下，或直接拖拽文字以激活音效</div>
 <script>
 // ==========================================
-// 1. 初始化引擎
+// 0. 屏幕调试日志面板 (方便定位问题)
 // ==========================================
-const Engine = Matter.Engine,
-      Bodies = Matter.Bodies,
-      Composite = Matter.Composite,
-      Mouse = Matter.Mouse,
-      MouseConstraint = Matter.MouseConstraint;
+const debugDiv = document.createElement('div');
+debugDiv.style.cssText = 'position: absolute; top: 60px; left: 10px; color: #d35400; background: rgba(255,255,255,0.9); padding: 10px; font-family: monospace; font-size: 12px; pointer-events: none; z-index: 9999; max-width: 80%; word-wrap: break-word;';
+document.body.appendChild(debugDiv);
 
+function logOnScreen(msg, isError = false) {
+    console[isError ? 'error' : 'log'](msg);
+    debugDiv.innerHTML += `<div style="color: ${isError ? 'red' : '#333'}">[LOG] ${msg}</div>`;
+}
+
+logOnScreen("游戏脚本开始执行 V4.1...");
+
+// ==========================================
+// 1. 纯代码音效引擎
+// ==========================================
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+
+function initAudio() {
+    if (!audioCtx) audioCtx = new AudioContext();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    document.getElementById('hint').style.display = 'none';
+}
+// 监听任意点击或触摸，立刻激活声音
+window.addEventListener('click', initAudio, { once: true });
+window.addEventListener('touchstart', initAudio, { once: true });
+
+function playTone(freq, type, duration, vol=0.1) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+}
+
+function playSnapSound() {
+    playTone(400, 'sine', 0.1, 0.4);
+    playTone(200, 'triangle', 0.15, 0.5);
+}
+
+function playWinSound() {
+    playTone(523.25, 'sine', 0.5, 0.3);
+    setTimeout(() => playTone(659.25, 'sine', 0.5, 0.3), 100);
+    setTimeout(() => playTone(783.99, 'sine', 0.8, 0.4), 200);
+}
+
+function speakWord(text) {
+    if (!window.speechSynthesis) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'zh-CN';
+    utterance.rate = 0.8;
+    utterance.pitch = 1.2;
+    window.speechSynthesis.speak(utterance);
+}
+
+// ==========================================
+// 2. 基础游戏逻辑初始化 (完全复用 V3 的完美对齐)
+// ==========================================
+const svgRiPath = `<path d="M 200 200 L 200 800 L 450 800 L 450 200 Z M 200 500 L 450 500" stroke="#2c3e50" stroke-width="60" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+const svgYuePath = `<path d="M 600 200 Q 550 500 500 900 M 600 200 Q 800 150 850 200 L 850 800 Q 800 900 700 850 M 600 450 L 820 450 M 600 650 L 820 650" stroke="#2c3e50" stroke-width="60" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+// 强行转交 Canvas 绘制而不是直接读 Base64
+const createSVGDataURI = (paths) => {
+    try {
+        const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">${paths}</svg>`;
+        const blob = new Blob([svgStr], {type: 'image/svg+xml'});
+        const url = URL.createObjectURL(blob);
+        logOnScreen(`生成 Blob URL 成功: ${url.substring(0, 30)}...`);
+        return url;
+    } catch(e) {
+        logOnScreen(`SVG Blob生成失败: ${e.message}`, true);
+        return "";
+    }
+};
+
+const { Engine, Bodies, Composite, Mouse, MouseConstraint } = Matter;
 const engine = Engine.create();
-const world = engine.world;
-
-const app = new PIXI.Application({
-    width: 800, 
-    height: 600, 
-    backgroundColor: 0xf5f4ef, // 宣纸色
-    resolution: window.devicePixelRatio || 1,
-    antialias: true // 开启抗锯齿
-});
+const app = new PIXI.Application({ width: 800, height: 600, backgroundColor: 0xf5f4ef, antialias: true });
 document.body.appendChild(app.view);
 
-// ==========================================
-// 2. 视觉样式定义 (高级感字体)
-// ==========================================
-const premiumFont = '"STKaiti", "KaiTi", "楷体", "SimSun", "PingFang SC", serif';
-
-// 目标虚影样式（淡淡的水墨印记）
-const ghostStyle = new PIXI.TextStyle({
-    fontFamily: premiumFont,
-    fontSize: 220,
-    fill: '#e0ddd3', 
-    fontWeight: 'normal'
-});
-
-// 碎片的实体样式（深色水墨质感带轻微投影）
-const pieceStyle = new PIXI.TextStyle({
-    fontFamily: premiumFont,
-    fontSize: 220,
-    fill: '#2c3e50', // 藏青墨色
-    dropShadow: true,
-    dropShadowColor: '#000000',
-    dropShadowBlur: 10,
-    dropShadowDistance: 4,
-    dropShadowAlpha: 0.15
-});
-
-// ==========================================
-// 3. 构建场景
-// ==========================================
-const snapThreshold = 50; 
-let isGameWon = false;
-
-// 地板和墙壁 (透明边界)
 const ground = Bodies.rectangle(400, 610, 810, 60, { isStatic: true });
 const leftWall = Bodies.rectangle(-10, 300, 60, 610, { isStatic: true });
 const rightWall = Bodies.rectangle(810, 300, 60, 610, { isStatic: true });
-Composite.add(world, [ground, leftWall, rightWall]);
+Composite.add(engine.world, [ground, leftWall, rightWall]);
 
-// 目标锚点！因为我们用的是完美对半切开的同一个字，所以它们吸附的目标中心点是完全一样的！
-const centerTarget = { x: 400, y: 300 }; 
+const VISUAL_SIZE = 200; 
+const TARGET_CX = 400;
+const TARGET_CY = 300;
 
-// 绘制底层虚影
-const ghostText = new PIXI.Text('明', ghostStyle);
-ghostText.anchor.set(0.5);
-ghostText.x = centerTarget.x; 
-ghostText.y = centerTarget.y;
-app.stage.addChild(ghostText);
+const targetBox = new PIXI.Graphics();
+targetBox.lineStyle(4, 0xe0ddd3, 1, 0.5, true);
+targetBox.drawRoundedRect(-VISUAL_SIZE/2, -VISUAL_SIZE/2, VISUAL_SIZE, VISUAL_SIZE, 10);
+targetBox.x = TARGET_CX; targetBox.y = TARGET_CY;
+app.stage.addChild(targetBox);
 
-// ==========================================
-// 4. 核心魔法：遮罩切割法生成完美碎片
-// ==========================================
-function createSeamlessPiece(isLeft, startX, startY) {
-    // 物理刚体 (左半边或右半边的矩形)
-    const body = Bodies.rectangle(startX, startY, 100, 200, { 
-        restitution: 0.2, friction: 0.1, density: 0.05 
-    });
+function createVectorPiece(svgString, startX, startY, isLeftPart) {
+    const bodyWidth = VISUAL_SIZE / 2;
+    const bodyHeight = VISUAL_SIZE;
+    const snapTarget = { x: isLeftPart ? TARGET_CX - bodyWidth/2 : TARGET_CX + bodyWidth/2, y: TARGET_CY };
+
+    // 使用 PIXI 官方推荐的异步 SVG 加载方式解决 V7 渲染层级问题
+    const body = Bodies.rectangle(startX, startY, bodyWidth, bodyHeight, { restitution: 0.2, friction: 0.1, density: 0.05 });
     
-    const sprite = new PIXI.Container();
+    // 退回 V3 的原生 Sprite，保证对齐和缩放绝对不出错
+    const sprite = new PIXI.Sprite();
     
-    // 渲染完整的“明”字
-    const text = new PIXI.Text('明', pieceStyle);
-    text.anchor.set(0.5);
-
-    // 用遮罩 (Mask) 把字切开
-    const mask = new PIXI.Graphics();
-    mask.beginFill(0xffffff);
-    if (isLeft) {
-        // 遮罩只保留左半边 (日)
-        mask.drawRect(-110, -120, 110, 240); 
-    } else {
-        // 遮罩只保留右半边 (月)
-        mask.drawRect(0, -120, 110, 240); 
-    }
-    mask.endFill();
-
-    sprite.addChild(text);
-    sprite.addChild(mask);
-    text.mask = mask; // 应用遮罩
+    // 使用浏览器原生 Image 对象加载，完美绕过 Pixi V7 对 Blob URL 扩展名的猜测！
+    const url = createSVGDataURI(svgString);
+    logOnScreen(`开始原生Image加载: isLeft=${isLeftPart}`);
+    
+    const img = new Image();
+    img.onload = () => {
+        logOnScreen(`原生Image加载成功: isLeft=${isLeftPart}, 尺寸 ${img.width}x${img.height}`);
+        sprite.texture = PIXI.Texture.from(img);
+        sprite.width = VISUAL_SIZE; sprite.height = VISUAL_SIZE;
+        sprite.anchor.set(isLeftPart ? 0.25 : 0.75, 0.5);
+        
+        body.customData.baseScaleX = sprite.scale.x;
+        body.customData.baseScaleY = sprite.scale.y;
+    };
+    img.onerror = () => {
+        logOnScreen(`原生Image加载失败: isLeft=${isLeftPart}`, true);
+    };
+    img.src = url;
 
     app.stage.addChild(sprite);
-
-    body.customData = { sprite, isSnapped: false };
-    Composite.add(world, body);
+    body.customData = { sprite, snapTarget, isSnapped: false, baseScaleX: 1, baseScaleY: 1, bounceAnim: 0 };
+    Composite.add(engine.world, body);
     return body;
 }
 
-// 生成切好的左右两半
-const pieceRi = createSeamlessPiece(true, 250, 100);
-const pieceYue = createSeamlessPiece(false, 550, 150);
+const pieceRi = createVectorPiece(svgRiPath, 200, 100, true);
+const pieceYue = createVectorPiece(svgYuePath, 600, 150, false);
 const pieces = [pieceRi, pieceYue];
 
-// ==========================================
-// 5. 交互与吸附
-// ==========================================
-const mouse = Mouse.create(app.view);
 const mConstraint = MouseConstraint.create(engine, {
-    mouse: mouse,
+    mouse: Mouse.create(app.view),
     constraint: { stiffness: 0.2, render: { visible: false } }
 });
-Composite.add(world, mConstraint);
+Composite.add(engine.world, mConstraint);
+
+// 拖拽时顺便激活音频
+Matter.Events.on(mConstraint, 'startdrag', () => initAudio());
+
+let isGameWon = false;
+let winAnimTick = 0;
 
 Matter.Events.on(mConstraint, 'enddrag', function(event) {
     const body = event.body;
     if (!body || !body.customData || body.customData.isSnapped) return;
 
-    // 因为两个碎片是由同一个字切开的，所以它们要对齐的是同一个中心坐标
-    const dist = Math.hypot(body.position.x - centerTarget.x, body.position.y - centerTarget.y);
+    const target = body.customData.snapTarget;
+    const dist = Math.hypot(body.position.x - target.x, body.position.y - target.y);
     
-    if (dist < snapThreshold) {
-        Matter.Body.setPosition(body, centerTarget);
+    if (dist < 60) {
+        Matter.Body.setPosition(body, target);
         Matter.Body.setAngle(body, 0);
         Matter.Body.setStatic(body, true);
         body.customData.isSnapped = true;
         
-        // 吸附反馈：稍微变暗一点点，模拟墨水压实
-        body.customData.sprite.children[0].style.fill = '#1a252f';
+        playSnapSound();
+        body.customData.sprite.tint = 0x34495e; 
+        
+        // 给它一个巨大的动画弹力值
+        body.customData.bounceAnim = 1.0;
+
         checkWinCondition();
     }
 });
 
 // ==========================================
-// 6. 游戏循环与演出
+// 3. 粒子爆炸引擎
+// ==========================================
+const particles = [];
+function createExplosion(x, y) {
+    const colors = [0xf1c40f, 0xe74c3c, 0xe67e22, 0xffffff]; 
+    for (let i = 0; i < 60; i++) {
+        const p = new PIXI.Graphics();
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        p.beginFill(color);
+        p.drawCircle(0, 0, Math.random() * 6 + 3); 
+        p.endFill();
+        p.x = x; p.y = y;
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 15 + 5;
+        p.vx = Math.cos(angle) * speed;
+        p.vy = Math.sin(angle) * speed;
+        p.life = 1.0; 
+        p.decay = Math.random() * 0.03 + 0.01; 
+        app.stage.addChild(p);
+        particles.push(p);
+    }
+}
+
+// ==========================================
+// 4. 安全的动画循环 (不再破坏原生 Scale)
 // ==========================================
 app.ticker.add(() => {
     Engine.update(engine, 1000 / 60);
@@ -172,43 +226,45 @@ app.ticker.add(() => {
         p.customData.sprite.x = p.position.x;
         p.customData.sprite.y = p.position.y;
         p.customData.sprite.rotation = p.angle;
+        
+        // 安全的弹性缩放（基于原始 baseScale 计算）
+        if (!isGameWon) {
+            if (p.customData.bounceAnim > 0) {
+                p.customData.bounceAnim -= 0.08; // 弹力衰减
+                const b = 1 + p.customData.bounceAnim * 0.3; // 最大放大 1.3 倍
+                p.customData.sprite.scale.set(p.customData.baseScaleX * b, p.customData.baseScaleY * b);
+            } else {
+                p.customData.sprite.scale.set(p.customData.baseScaleX, p.customData.baseScaleY);
+            }
+        }
     });
 
+    for (let i = particles.length - 1; i >= 0; i--) {
+        let p = particles[i];
+        p.x += p.vx; p.y += p.vy;
+        p.vy += 0.5; p.life -= p.decay; p.alpha = p.life; p.scale.set(p.life);
+        if (p.life <= 0) { app.stage.removeChild(p); particles.splice(i, 1); }
+    }
+
     if (isGameWon) {
-        const finalWord = app.stage.getChildByName('finalWord');
-        if (finalWord && finalWord.scale.x < 1.1) {
-            finalWord.scale.x += 0.01;
-            finalWord.scale.y += 0.01;
-        }
+        winAnimTick += 0.15;
+        const bounce = Math.exp(-winAnimTick * 0.5) * Math.sin(winAnimTick * 5);
+        pieces.forEach(p => {
+            // 胜利时的集体弹跳
+            const b = 1 + bounce * 0.2;
+            p.customData.sprite.scale.set(p.customData.baseScaleX * b, p.customData.baseScaleY * b);
+        });
     }
 });
 
 function checkWinCondition() {
     if (pieceRi.customData.isSnapped && pieceYue.customData.isSnapped) {
         isGameWon = true;
-        
-        // 隐藏碎片和虚影
-        ghostText.visible = false;
-        pieceRi.customData.sprite.visible = false;
-        pieceYue.customData.sprite.visible = false;
-
-        // 生成一个完整的、带金色发光效果的成字
-        const glowStyle = new PIXI.TextStyle({
-            fontFamily: premiumFont,
-            fontSize: 220,
-            fill: '#d35400', // 一种高级的朱红色
-            dropShadow: true,
-            dropShadowColor: '#f1c40f', // 金色光晕
-            dropShadowBlur: 30,
-            dropShadowDistance: 0,
-        });
-
-        const finalWord = new PIXI.Text('明', glowStyle);
-        finalWord.name = 'finalWord';
-        finalWord.anchor.set(0.5);
-        finalWord.x = centerTarget.x; 
-        finalWord.y = centerTarget.y;
-        app.stage.addChild(finalWord);
+        targetBox.visible = false;
+        playWinSound();               
+        setTimeout(() => speakWord('明'), 500); 
+        createExplosion(TARGET_CX, TARGET_CY);  
+        pieces.forEach(p => p.customData.sprite.tint = 0xd35400);
     }
 }
 </script>
