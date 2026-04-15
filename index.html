@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>汉字乐高 - V2 严丝合缝版</title>
+    <style>
+        body { 
+            margin: 0; padding: 0; overflow: hidden; 
+            /* 宣纸质感的米色背景 */
+            background-color: #f5f4ef; 
+            display: flex; justify-content: center; align-items: center; height: 100vh; 
+        }
+        canvas { 
+            /* 柔和的画布阴影 */
+            box-shadow: 0 20px 50px rgba(0,0,0,0.1); 
+            border-radius: 12px;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+</head>
+<body>
+
+<script>
+// ==========================================
+// 1. 初始化引擎
+// ==========================================
+const Engine = Matter.Engine,
+      Bodies = Matter.Bodies,
+      Composite = Matter.Composite,
+      Mouse = Matter.Mouse,
+      MouseConstraint = Matter.MouseConstraint;
+
+const engine = Engine.create();
+const world = engine.world;
+
+const app = new PIXI.Application({
+    width: 800, 
+    height: 600, 
+    backgroundColor: 0xf5f4ef, // 宣纸色
+    resolution: window.devicePixelRatio || 1,
+    antialias: true // 开启抗锯齿
+});
+document.body.appendChild(app.view);
+
+// ==========================================
+// 2. 视觉样式定义 (高级感字体)
+// ==========================================
+const premiumFont = '"STKaiti", "KaiTi", "楷体", "SimSun", "PingFang SC", serif';
+
+// 目标虚影样式（淡淡的水墨印记）
+const ghostStyle = new PIXI.TextStyle({
+    fontFamily: premiumFont,
+    fontSize: 220,
+    fill: '#e0ddd3', 
+    fontWeight: 'normal'
+});
+
+// 碎片的实体样式（深色水墨质感带轻微投影）
+const pieceStyle = new PIXI.TextStyle({
+    fontFamily: premiumFont,
+    fontSize: 220,
+    fill: '#2c3e50', // 藏青墨色
+    dropShadow: true,
+    dropShadowColor: '#000000',
+    dropShadowBlur: 10,
+    dropShadowDistance: 4,
+    dropShadowAlpha: 0.15
+});
+
+// ==========================================
+// 3. 构建场景
+// ==========================================
+const snapThreshold = 50; 
+let isGameWon = false;
+
+// 地板和墙壁 (透明边界)
+const ground = Bodies.rectangle(400, 610, 810, 60, { isStatic: true });
+const leftWall = Bodies.rectangle(-10, 300, 60, 610, { isStatic: true });
+const rightWall = Bodies.rectangle(810, 300, 60, 610, { isStatic: true });
+Composite.add(world, [ground, leftWall, rightWall]);
+
+// 目标锚点！因为我们用的是完美对半切开的同一个字，所以它们吸附的目标中心点是完全一样的！
+const centerTarget = { x: 400, y: 300 }; 
+
+// 绘制底层虚影
+const ghostText = new PIXI.Text('明', ghostStyle);
+ghostText.anchor.set(0.5);
+ghostText.x = centerTarget.x; 
+ghostText.y = centerTarget.y;
+app.stage.addChild(ghostText);
+
+// ==========================================
+// 4. 核心魔法：遮罩切割法生成完美碎片
+// ==========================================
+function createSeamlessPiece(isLeft, startX, startY) {
+    // 物理刚体 (左半边或右半边的矩形)
+    const body = Bodies.rectangle(startX, startY, 100, 200, { 
+        restitution: 0.2, friction: 0.1, density: 0.05 
+    });
+    
+    const sprite = new PIXI.Container();
+    
+    // 渲染完整的“明”字
+    const text = new PIXI.Text('明', pieceStyle);
+    text.anchor.set(0.5);
+
+    // 用遮罩 (Mask) 把字切开
+    const mask = new PIXI.Graphics();
+    mask.beginFill(0xffffff);
+    if (isLeft) {
+        // 遮罩只保留左半边 (日)
+        mask.drawRect(-110, -120, 110, 240); 
+    } else {
+        // 遮罩只保留右半边 (月)
+        mask.drawRect(0, -120, 110, 240); 
+    }
+    mask.endFill();
+
+    sprite.addChild(text);
+    sprite.addChild(mask);
+    text.mask = mask; // 应用遮罩
+
+    app.stage.addChild(sprite);
+
+    body.customData = { sprite, isSnapped: false };
+    Composite.add(world, body);
+    return body;
+}
+
+// 生成切好的左右两半
+const pieceRi = createSeamlessPiece(true, 250, 100);
+const pieceYue = createSeamlessPiece(false, 550, 150);
+const pieces = [pieceRi, pieceYue];
+
+// ==========================================
+// 5. 交互与吸附
+// ==========================================
+const mouse = Mouse.create(app.view);
+const mConstraint = MouseConstraint.create(engine, {
+    mouse: mouse,
+    constraint: { stiffness: 0.2, render: { visible: false } }
+});
+Composite.add(world, mConstraint);
+
+Matter.Events.on(mConstraint, 'enddrag', function(event) {
+    const body = event.body;
+    if (!body || !body.customData || body.customData.isSnapped) return;
+
+    // 因为两个碎片是由同一个字切开的，所以它们要对齐的是同一个中心坐标
+    const dist = Math.hypot(body.position.x - centerTarget.x, body.position.y - centerTarget.y);
+    
+    if (dist < snapThreshold) {
+        Matter.Body.setPosition(body, centerTarget);
+        Matter.Body.setAngle(body, 0);
+        Matter.Body.setStatic(body, true);
+        body.customData.isSnapped = true;
+        
+        // 吸附反馈：稍微变暗一点点，模拟墨水压实
+        body.customData.sprite.children[0].style.fill = '#1a252f';
+        checkWinCondition();
+    }
+});
+
+// ==========================================
+// 6. 游戏循环与演出
+// ==========================================
+app.ticker.add(() => {
+    Engine.update(engine, 1000 / 60);
+
+    pieces.forEach(p => {
+        p.customData.sprite.x = p.position.x;
+        p.customData.sprite.y = p.position.y;
+        p.customData.sprite.rotation = p.angle;
+    });
+
+    if (isGameWon) {
+        const finalWord = app.stage.getChildByName('finalWord');
+        if (finalWord && finalWord.scale.x < 1.1) {
+            finalWord.scale.x += 0.01;
+            finalWord.scale.y += 0.01;
+        }
+    }
+});
+
+function checkWinCondition() {
+    if (pieceRi.customData.isSnapped && pieceYue.customData.isSnapped) {
+        isGameWon = true;
+        
+        // 隐藏碎片和虚影
+        ghostText.visible = false;
+        pieceRi.customData.sprite.visible = false;
+        pieceYue.customData.sprite.visible = false;
+
+        // 生成一个完整的、带金色发光效果的成字
+        const glowStyle = new PIXI.TextStyle({
+            fontFamily: premiumFont,
+            fontSize: 220,
+            fill: '#d35400', // 一种高级的朱红色
+            dropShadow: true,
+            dropShadowColor: '#f1c40f', // 金色光晕
+            dropShadowBlur: 30,
+            dropShadowDistance: 0,
+        });
+
+        const finalWord = new PIXI.Text('明', glowStyle);
+        finalWord.name = 'finalWord';
+        finalWord.anchor.set(0.5);
+        finalWord.x = centerTarget.x; 
+        finalWord.y = centerTarget.y;
+        app.stage.addChild(finalWord);
+    }
+}
+</script>
+</body>
+</html>

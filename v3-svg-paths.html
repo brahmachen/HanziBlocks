@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>汉字乐高 - V3 矢量引擎版</title>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #f5f4ef; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        canvas { box-shadow: 0 20px 50px rgba(0,0,0,0.1); border-radius: 12px; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+</head>
+<body>
+
+<script>
+// ==========================================
+// 1. 模拟 MakeMeAHanzi 提取出的纯 SVG Path 数据
+// 所有的坐标都在一个统一的 1024x1024 绝对坐标系中！
+// ==========================================
+
+// "日" 的 4 条矢量笔画
+const svgRiPath = `
+    <path d="M 200 200 L 200 800 L 450 800 L 450 200 Z M 200 500 L 450 500" 
+          stroke="%232c3e50" stroke-width="60" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+`;
+
+// "月" 的 4 条矢量笔画
+const svgYuePath = `
+    <path d="M 600 200 Q 550 500 500 900 M 600 200 Q 800 150 850 200 L 850 800 Q 800 900 700 850 M 600 450 L 820 450 M 600 650 L 820 650" 
+          stroke="%232c3e50" stroke-width="60" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+`;
+
+// 将 Path 包装成标准 1024x1024 的 SVG 图像
+const createSVGDataURI = (paths) => `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">${paths}</svg>`;
+
+// ==========================================
+// 2. 初始化引擎 (Matter.js + PixiJS)
+// ==========================================
+const { Engine, Bodies, Composite, Mouse, MouseConstraint } = Matter;
+const engine = Engine.create();
+const app = new PIXI.Application({ width: 800, height: 600, backgroundColor: 0xf5f4ef, antialias: true });
+document.body.appendChild(app.view);
+
+const ground = Bodies.rectangle(400, 610, 810, 60, { isStatic: true });
+const leftWall = Bodies.rectangle(-10, 300, 60, 610, { isStatic: true });
+const rightWall = Bodies.rectangle(810, 300, 60, 610, { isStatic: true });
+Composite.add(engine.world, [ground, leftWall, rightWall]);
+
+// ==========================================
+// 3. 核心魔法：绝对坐标系下的锚点对齐
+// ==========================================
+// 我们把整个“明”字缩小到 200x200 像素展示
+const VISUAL_SIZE = 200; 
+
+// 虚影目标位置 (屏幕正中心)
+const TARGET_CX = 400;
+const TARGET_CY = 300;
+
+// 画一个提示框 (用来提示吸附位置)
+const targetBox = new PIXI.Graphics();
+targetBox.lineStyle(4, 0xe0ddd3, 1, 0.5, true); // 虚线框感
+targetBox.drawRoundedRect(-VISUAL_SIZE/2, -VISUAL_SIZE/2, VISUAL_SIZE, VISUAL_SIZE, 10);
+targetBox.x = TARGET_CX; targetBox.y = TARGET_CY;
+app.stage.addChild(targetBox);
+
+// ==========================================
+// 4. 物理碎片生成器 (结合 SVG 和刚体)
+// ==========================================
+function createVectorPiece(svgString, startX, startY, isLeftPart) {
+    // 物理刚体：宽度只有一半(100px)，高度 200px
+    const bodyWidth = VISUAL_SIZE / 2;
+    const bodyHeight = VISUAL_SIZE;
+    
+    // 吸附目标点：左半边在 cx-50，右半边在 cx+50
+    const snapTarget = {
+        x: isLeftPart ? TARGET_CX - bodyWidth/2 : TARGET_CX + bodyWidth/2,
+        y: TARGET_CY
+    };
+
+    const body = Bodies.rectangle(startX, startY, bodyWidth, bodyHeight, { 
+        restitution: 0.2, friction: 0.1, density: 0.05 
+    });
+    
+    // 渲染精灵：加载 SVG
+    const texture = PIXI.Texture.from(createSVGDataURI(svgString));
+    const sprite = new PIXI.Sprite(texture);
+    sprite.width = VISUAL_SIZE;
+    sprite.height = VISUAL_SIZE;
+    
+    // 🔥 最精妙的偏移魔法 🔥
+    // 整个 SVG 视口是 1024(200px)。
+    // 左半边("日")的物理重心在 x=50，右半边("月")的物理重心在 x=150。
+    // 我们通过调整 Anchor，让物理刚体的中心完美对齐 SVG 中对应部首的图像中心！
+    sprite.anchor.set(isLeftPart ? 0.25 : 0.75, 0.5);
+
+    app.stage.addChild(sprite);
+
+    body.customData = { sprite, snapTarget, isSnapped: false };
+    Composite.add(engine.world, body);
+    return body;
+}
+
+// 提取“日”和“月”生成带物理属性的积木
+const pieceRi = createVectorPiece(svgRiPath, 200, 100, true);
+const pieceYue = createVectorPiece(svgYuePath, 600, 150, false);
+const pieces = [pieceRi, pieceYue];
+
+// ==========================================
+// 5. 交互与精确吸附
+// ==========================================
+const mConstraint = MouseConstraint.create(engine, {
+    mouse: Mouse.create(app.view),
+    constraint: { stiffness: 0.2, render: { visible: false } }
+});
+Composite.add(engine.world, mConstraint);
+
+let isGameWon = false;
+
+Matter.Events.on(mConstraint, 'enddrag', function(event) {
+    const body = event.body;
+    if (!body || !body.customData || body.customData.isSnapped) return;
+
+    const target = body.customData.snapTarget;
+    const dist = Math.hypot(body.position.x - target.x, body.position.y - target.y);
+    
+    if (dist < 60) {
+        Matter.Body.setPosition(body, target);
+        Matter.Body.setAngle(body, 0);
+        Matter.Body.setStatic(body, true);
+        body.customData.isSnapped = true;
+        
+        // 吸附反馈
+        body.customData.sprite.tint = 0x1a252f;
+        checkWinCondition();
+    }
+});
+
+// ==========================================
+// 6. 渲染同步与胜利特效
+// ==========================================
+app.ticker.add(() => {
+    Engine.update(engine, 1000 / 60);
+
+    pieces.forEach(p => {
+        p.customData.sprite.x = p.position.x;
+        p.customData.sprite.y = p.position.y;
+        p.customData.sprite.rotation = p.angle;
+    });
+
+    if (isGameWon) {
+        pieces.forEach(p => {
+            if (p.customData.sprite.scale.x < 0.22) { // 稍微放大产生蹦出感
+                p.customData.sprite.scale.set(p.customData.sprite.scale.x + 0.001);
+            }
+        });
+    }
+});
+
+function checkWinCondition() {
+    if (pieceRi.customData.isSnapped && pieceYue.customData.isSnapped) {
+        isGameWon = true;
+        targetBox.visible = false; // 隐藏辅助线
+        
+        // 胜利特效：把两半原本独立的矢量图，染色成统一的金色！
+        pieces.forEach(p => {
+            p.customData.sprite.tint = 0xd35400; // 朱红色
+        });
+        console.log("【拼合完成】因为它们的 SVG Bounding Box 是绝对对齐的，所以接缝像素级吻合！");
+    }
+}
+</script>
+</body>
+</html>
