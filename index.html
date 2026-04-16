@@ -139,7 +139,7 @@ function createVectorPiece(svgString, startX, startY, isLeftPart) {
 
     // 【新增】创建一个专门用于渲染阴影的 Sprite
     const shadowSprite = new PIXI.Sprite();
-    shadowSprite.tint = 0x000000;
+    shadowSprite.tint = 0x1a252f; // 使用深藏青/深褐色代替纯黑，避免在米色背景上显得像脏灰
     shadowSprite.alpha = 0; // 初始完全透明，由动画缓动控制
     shadowSprite.visible = true;
 
@@ -222,6 +222,7 @@ Matter.Events.on(mConstraint, 'startdrag', (event) => {
             
             // 抓起瞬间的【魔法变色与粒子起爆】
             event.body.customData.sprite.tint = 0xf39c12; // 变成闪耀的魔法橙金色
+            event.body.customData.shadowSprite.tint = 0xd35400; // 阴影也跟着环境光染成偏红/橙的暖色投影
             createPickupDust(event.body.position.x, event.body.position.y); // 触发底部星火飞溅
         }
     }
@@ -242,7 +243,10 @@ Matter.Events.on(mConstraint, 'enddrag', function(event) {
     if (body.customData.isSnapped) return;
     
     // 松手时，恢复原本的墨色（除非已经赢了）
-    if (!isGameWon) body.customData.sprite.tint = 0x2c3e50;
+    if (!isGameWon) {
+        body.customData.sprite.tint = 0x2c3e50;
+        body.customData.shadowSprite.tint = 0x1a252f; // 阴影恢复深沉冷色
+    }
 
     const target = body.customData.snapTarget;
     const dist = Math.hypot(body.position.x - target.x, body.position.y - target.y);
