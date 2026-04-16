@@ -288,10 +288,10 @@ app.ticker.add(() => {
             
             // 【核心优化：防遮挡偏移 (Finger Offset)】
             // 当玩家抓起积木时，为了防止手指/鼠标指针完全遮挡住中部的文字，
-            // 我们让实际显示的图像(Container)在视觉上往【左上方】稍微偏移一点点。
+            // 我们让实际显示的图像(Container)在视觉上往【正上方】偏移。
             // 但这仅仅是视觉偏移，Matter.js 的物理碰撞体 (body) 依然在鼠标真实位置，保证吸附手感不变。
-            p.customData.container.x = p.position.x - 20; 
-            p.customData.container.y = p.position.y - 40; 
+            p.customData.container.x = p.position.x; 
+            p.customData.container.y = p.position.y - 60; // 提得更高一点，彻底避开手指遮挡
             
             // 2. 速度形变：根据物理引擎的线速度拉长或压扁
             // v.x 控制宽度，v.y 控制高度。速度越快，形变越夸张
