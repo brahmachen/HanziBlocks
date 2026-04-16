@@ -44,9 +44,10 @@ function initAudio() {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     document.getElementById('hint').style.display = 'none';
 }
-// 监听任意点击或触摸，立刻激活声音
-window.addEventListener('click', initAudio, { once: true });
-window.addEventListener('touchstart', initAudio, { once: true });
+// 监听任意点击或触摸，立刻激活声音。
+// 【核心修改】：现代浏览器的事件拦截问题，Canvas内的拖拽往往被封装成 PointerEvent，并被 Pixi 的事件系统吃掉（stopPropagation）。
+// 我们必须把监听器挂在 document 上，并且设置为【捕获阶段】(capture: true)，这样它绝对能在 Canvas 拦截之前触发！
+document.addEventListener('pointerdown', initAudio, { capture: true, once: true });
 
 function playTone(freq, type, duration, vol=0.1) {
     if (!audioCtx) return;
