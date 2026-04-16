@@ -85,8 +85,8 @@ function speakWord(text) {
 // ==========================================
 // 2. 基础游戏逻辑初始化 (完全复用 V3 的完美对齐)
 // ==========================================
-const svgRiPath = `<path d="M 200 200 L 200 800 L 450 800 L 450 200 Z M 200 500 L 450 500" stroke="#2c3e50" stroke-width="60" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
-const svgYuePath = `<path d="M 600 200 Q 550 500 500 900 M 600 200 Q 800 150 850 200 L 850 800 Q 800 900 700 850 M 600 450 L 820 450 M 600 650 L 820 650" stroke="#2c3e50" stroke-width="60" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+const svgRiPath = `<path d="M 200 200 L 200 800 L 450 800 L 450 200 Z M 200 500 L 450 500" stroke="#ffffff" stroke-width="60" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+const svgYuePath = `<path d="M 600 200 Q 550 500 500 900 M 600 200 Q 800 150 850 200 L 850 800 Q 800 900 700 850 M 600 450 L 820 450 M 600 650 L 820 650" stroke="#ffffff" stroke-width="60" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
 // 强行转交 Canvas 绘制而不是直接读 Base64
 const createSVGDataURI = (paths) => {
     try {
@@ -177,10 +177,11 @@ function createVectorPiece(svgString, startX, startY, isLeftPart) {
         ghostSprite.anchor.set(isLeftPart ? 0.25 : 0.75, 0.5);
         ghostSprite.x = snapTarget.x; 
         ghostSprite.y = snapTarget.y; 
+        // 预判虚影原本是纯白，我们用 Tint 染成铅笔灰色
+        ghostSprite.tint = 0x95a5a6;
 
         body.customData.baseScaleX = sprite.scale.x;
-        body.customData.baseScaleY = sprite.scale.y;
-    };
+        body.customData.baseScaleY = sprite.scale.y;\n        \n        // 【核心渲染逻辑】：初始把白色的原版 SVG 染色为深邃的藏青色/黑灰色，因为 Tint 是正片叠底，所以必须基于白色\n        sprite.tint = 0x2c3e50;\n    };
     img.onerror = () => {
         logOnScreen(`原生Image加载失败: isLeft=${isLeftPart}`, true);
     };
@@ -237,7 +238,7 @@ Matter.Events.on(mConstraint, 'enddrag', function(event) {
     if (body.customData.isSnapped) return;
     
     // 松手时，恢复原本的墨色（除非已经赢了）
-    if (!isGameWon) body.customData.sprite.tint = 0xffffff;
+    if (!isGameWon) body.customData.sprite.tint = 0x2c3e50;
 
     const target = body.customData.snapTarget;
     const dist = Math.hypot(body.position.x - target.x, body.position.y - target.y);
