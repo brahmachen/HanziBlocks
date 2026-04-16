@@ -132,6 +132,11 @@ function createVectorPiece(svgString, startX, startY, isLeftPart) {
     // 退回 V3 的原生 Sprite，保证对齐和缩放绝对不出错
     const sprite = new PIXI.Sprite();
     
+    // 【新增】目标槽位预判虚影 (Ghost Slot)
+    const ghostSprite = new PIXI.Sprite();
+    ghostSprite.tint = 0x95a5a6; // 一种类似铅笔手稿/水痕的浅灰色
+    ghostSprite.alpha = 0; // 初始完全隐藏
+
     // 【新增】创建一个专门用于渲染阴影的 Sprite
     const shadowSprite = new PIXI.Sprite();
     shadowSprite.tint = 0x000000;
@@ -166,6 +171,13 @@ function createVectorPiece(svgString, startX, startY, isLeftPart) {
         blurFilter.quality = 3;    // 渲染质量拉满
         shadowSprite.filters = [blurFilter];
 
+        // 同理配置槽位预判的虚影，并锁定在目标槽位的位置
+        ghostSprite.texture = sprite.texture;
+        ghostSprite.width = VISUAL_SIZE; ghostSprite.height = VISUAL_SIZE;
+        ghostSprite.anchor.set(isLeftPart ? 0.25 : 0.75, 0.5);
+        ghostSprite.x = snapTarget.x; 
+        ghostSprite.y = snapTarget.y; 
+
         body.customData.baseScaleX = sprite.scale.x;
         body.customData.baseScaleY = sprite.scale.y;
     };
@@ -174,8 +186,9 @@ function createVectorPiece(svgString, startX, startY, isLeftPart) {
     };
     img.src = url;
 
+    app.stage.addChild(ghostSprite); // 槽位虚影放在底层
     app.stage.addChild(container);
-    body.customData = { sprite, shadowSprite, container, snapTarget, isSnapped: false, baseScaleX: 1, baseScaleY: 1, bounceAnim: 0, isDragged: false, targetShadowAlpha: 0 };
+    body.customData = { sprite, shadowSprite, ghostSprite, container, snapTarget, isSnapped: false, baseScaleX: 1, baseScaleY: 1, bounceAnim: 0, isDragged: false, targetShadowAlpha: 0 };
     Composite.add(engine.world, body);
     return body;
 }
@@ -279,6 +292,20 @@ app.ticker.add(() => {
         
         // --- 阴影的缓动平滑过渡 (Lerp) ---
         p.customData.shadowSprite.alpha += (p.customData.targetShadowAlpha - p.customData.shadowSprite.alpha) * 0.15;
+        
+        // --- 【新增特效：距离感知智能槽位投影 (Proximity Ghosting)】 ---
+        if (!p.customData.isSnapped && !isGameWon) {
+            const dist = Math.hypot(p.position.x - p.customData.snapTarget.x, p.position.y - p.customData.snapTarget.y);
+            // 只有距离目标 250 像素以内才开始显示预判虚影。
+            // 当距离为 250 时，透明度是 0；当距离为 0（完美重合）时，透明度是 0.35
+            const maxDist = 250;
+            const targetGhostAlpha = dist < maxDist ? (1 - dist / maxDist) * 0.35 : 0;
+            // 同样使用 Lerp 缓动，让槽位的浮现像水汽一样平滑自然
+            p.customData.ghostSprite.alpha += (targetGhostAlpha - p.customData.ghostSprite.alpha) * 0.2;
+        } else {
+            // 吸附完成或游戏胜利后，隐藏槽位虚影
+            p.customData.ghostSprite.alpha += (0 - p.customData.ghostSprite.alpha) * 0.2;
+        }
         // ---------------------------------
         
         // 【新增特效：浮空放大、拖拽偏移 与 速度形变】
