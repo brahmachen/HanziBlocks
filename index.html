@@ -154,11 +154,11 @@ function createVectorPiece(svgString, startX, startY, isLeftPart) {
         sprite.width = VISUAL_SIZE; sprite.height = VISUAL_SIZE;
         sprite.anchor.set(isLeftPart ? 0.25 : 0.75, 0.5);
 
-        // 阴影共享一样的尺寸和锚点，并偏移产生立体感
+        // 阴影共享一样的尺寸和锚点，并偏移产生立体感 (光线从正上方直射，带一点点高度感)
         shadowSprite.texture = sprite.texture;
         shadowSprite.width = VISUAL_SIZE; shadowSprite.height = VISUAL_SIZE;
         shadowSprite.anchor.set(isLeftPart ? 0.25 : 0.75, 0.5);
-        shadowSprite.x = 10; shadowSprite.y = 15; // 投射向右下的虚影
+        shadowSprite.x = 0; shadowSprite.y = 20; // 阴影改到正下方
 
         body.customData.baseScaleX = sprite.scale.x;
         body.customData.baseScaleY = sprite.scale.y;
@@ -289,10 +289,11 @@ app.ticker.add(() => {
             const finalScaleX = p.customData.baseScaleX * liftScale * stretchX / stretchY;
             const finalScaleY = p.customData.baseScaleY * liftScale * stretchY / stretchX;
             
-            p.customData.sprite.scale.set(finalScaleX, finalScaleY);
-            
-            // 阴影随高度(速度或提起)而变大，透明度由平滑的 targetShadowAlpha 控制，不再硬切\n            p.customData.shadowSprite.scale.set(finalScaleX * 1.05, finalScaleY * 1.05);\n            p.customData.targetShadowAlpha = 0.25 - Math.min(Math.abs(p.velocity.x + p.velocity.y)*0.003, 0.15);\n            p.customData.shadowSprite.x = 10 + p.velocity.x * 0.2; // 阴影受速度轻微拖拽偏移
-            p.customData.shadowSprite.y = 15 + p.velocity.y * 0.2;
+            p.customData.shadowSprite.scale.set(finalScaleX * 1.05, finalScaleY * 1.05);
+            p.customData.targetShadowAlpha = 0.25 - Math.min(Math.abs(p.velocity.x + p.velocity.y)*0.003, 0.15);
+            // 抓起和拖拽时，阴影重心都在正下方，仅根据拖拽速度发生轻微物理形变错位
+            p.customData.shadowSprite.x = 0 + p.velocity.x * 0.15;
+            p.customData.shadowSprite.y = 20 + p.velocity.y * 0.15;
             
         } else if (!isGameWon) {
             // 没有被拖拽时的安全弹性缩放（吸附果冻回弹）
