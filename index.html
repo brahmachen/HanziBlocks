@@ -181,7 +181,11 @@ function createVectorPiece(svgString, startX, startY, isLeftPart) {
         ghostSprite.tint = 0x95a5a6;
 
         body.customData.baseScaleX = sprite.scale.x;
-        body.customData.baseScaleY = sprite.scale.y;\n        \n        // 【核心渲染逻辑】：初始把白色的原版 SVG 染色为深邃的藏青色/黑灰色，因为 Tint 是正片叠底，所以必须基于白色\n        sprite.tint = 0x2c3e50;\n    };
+        body.customData.baseScaleY = sprite.scale.y;
+        
+        // 【核心渲染逻辑】：初始把白色的原版 SVG 染色为深邃的藏青色/黑灰色，因为 Tint 是正片叠底，所以必须基于白色
+        sprite.tint = 0x2c3e50;
+    };
     img.onerror = () => {
         logOnScreen(`原生Image加载失败: isLeft=${isLeftPart}`, true);
     };
