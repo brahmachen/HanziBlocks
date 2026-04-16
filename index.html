@@ -109,15 +109,42 @@ function playTone(freq, type, duration, vol=0.1) {
 }
 
 function playSnapSound() {
-    // 【修改】悦耳的木琴/水滴声 (清脆的高频，完美五度和弦 C5 + G5)
-    // 听起来像非常Q弹的 "Bloop!" 或者高级UI里的清脆提示音
-    playTone(523.25, 'sine', 0.1, 0.5);  // C5
-    playTone(783.99, 'sine', 0.15, 0.3); // G5
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    
+    // 【滑稽的吸附声】：Endless Reader 风格的 "Boing!" 弹簧声 (从低音极速滑向高音)
+    osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.15);
+    
+    gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+    
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.15);
 }
 
-// 【新增】错误/未吸附时的“噗”声 (木块掉落地板/无反应的短促低音)
+// 【滑稽的掉落声】：Endless Reader 风格的 "Womp" 遗憾声 (鸭子叫/滑音向下)
 function playDropSound() {
-    playTone(150, 'square', 0.05, 0.15); // 非常短促且沉闷的“嗒”声，不会引起反感
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth'; // 锯齿波自带一种粗糙的喜剧感，类似放屁或者木头刮擦
+    
+    // 从 250Hz 滑向 80Hz 的低频遗憾音
+    osc.frequency.setValueAtTime(250, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(80, audioCtx.currentTime + 0.2);
+    
+    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+    
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.2);
 }
 
 function playWinSound() {
