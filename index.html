@@ -214,6 +214,10 @@ Matter.Events.on(mConstraint, 'startdrag', (event) => {
             event.body.customData.isDragged = true;
             event.body.customData.targetShadowAlpha = 0.4; // 抓起时因为有模糊效果，透明度可以稍微提高一点来凸显立体感
             app.stage.addChild(event.body.customData.container); // 移到顶层显示
+            
+            // 抓起瞬间的【魔法变色与粒子起爆】
+            event.body.customData.sprite.tint = 0xf39c12; // 变成闪耀的魔法橙金色
+            createPickupDust(event.body.position.x, event.body.position.y); // 触发底部星火飞溅
         }
     }
 });
@@ -231,6 +235,9 @@ Matter.Events.on(mConstraint, 'enddrag', function(event) {
     body.customData.sprite.scale.set(body.customData.baseScaleX, body.customData.baseScaleY);
 
     if (body.customData.isSnapped) return;
+    
+    // 松手时，恢复原本的墨色（除非已经赢了）
+    if (!isGameWon) body.customData.sprite.tint = 0xffffff;
 
     const target = body.customData.snapTarget;
     const dist = Math.hypot(body.position.x - target.x, body.position.y - target.y);
@@ -259,6 +266,7 @@ Matter.Events.on(mConstraint, 'enddrag', function(event) {
 // 3. 粒子爆炸引擎
 // ==========================================
 const particles = [];
+// 胜利时的大型彩色烟花
 function createExplosion(x, y) {
     const colors = [0xf1c40f, 0xe74c3c, 0xe67e22, 0xffffff]; 
     for (let i = 0; i < 60; i++) {
@@ -274,6 +282,27 @@ function createExplosion(x, y) {
         p.vy = Math.sin(angle) * speed;
         p.life = 1.0; 
         p.decay = Math.random() * 0.03 + 0.01; 
+        app.stage.addChild(p);
+        particles.push(p);
+    }
+}
+
+// 抓起时的金色魔法星火飞溅
+function createPickupDust(x, y) {
+    for (let i = 0; i < 15; i++) {
+        const p = new PIXI.Graphics();
+        p.beginFill(0xf1c40f); // 纯金色
+        p.drawCircle(0, 0, Math.random() * 4 + 2); 
+        p.endFill();
+        p.x = x; p.y = y + 30; // 从积木底部扬起
+        
+        // 只向上和向两边喷射
+        const angle = Math.PI + (Math.random() - 0.5) * Math.PI; 
+        const speed = Math.random() * 8 + 2;
+        p.vx = Math.cos(angle) * speed;
+        p.vy = Math.sin(angle) * speed;
+        p.life = 1.0; 
+        p.decay = Math.random() * 0.05 + 0.02; // 消失得更快
         app.stage.addChild(p);
         particles.push(p);
     }
