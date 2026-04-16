@@ -109,8 +109,10 @@ function playTone(freq, type, duration, vol=0.1) {
 }
 
 function playSnapSound() {
-    playTone(400, 'sine', 0.1, 0.4);
-    playTone(200, 'triangle', 0.15, 0.5);
+    // 【修改】悦耳的木琴/水滴声 (清脆的高频，完美五度和弦 C5 + G5)
+    // 听起来像非常Q弹的 "Bloop!" 或者高级UI里的清脆提示音
+    playTone(523.25, 'sine', 0.1, 0.5);  // C5
+    playTone(783.99, 'sine', 0.15, 0.3); // G5
 }
 
 // 【新增】错误/未吸附时的“噗”声 (木块掉落地板/无反应的短促低音)
