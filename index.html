@@ -27,11 +27,24 @@ debugDiv.style.cssText = 'position: absolute; top: 60px; left: 10px; color: #d35
 document.body.appendChild(debugDiv);
 
 function logOnScreen(msg, isError = false) {
-    console[isError ? 'error' : 'log'](msg);
-    debugDiv.innerHTML += `<div style="color: ${isError ? 'red' : '#333'}">[LOG] ${msg}</div>`;
+        #debugLog { position: absolute; bottom: 20px; left: 20px; color: #e74c3c; font-family: monospace; font-size: 12px; pointer-events: none; background: rgba(0,0,0,0.8); padding: 10px; border-radius: 8px; z-index: 100; max-height: 200px; overflow-y: auto; width: 300px; display: none; }
+    </style>
+</head>
+<body>
+    <div id="hint">点我一下，或直接拖拽文字以激活音效</div>
+    <button id="restartBtn" onclick="location.reload()">↺ 重新开始</button>
+    <div id="debugLog"></div>
+<script>
+function logOnScreen(msg, isError = false) {
+    const logDiv = document.getElementById('debugLog');
+    logDiv.style.display = 'block';
+    const line = document.createElement('div');
+    line.textContent = `[LOG] ${msg}`;
+    if (isError) line.style.color = '#f1c40f';
+    logDiv.appendChild(line);
+    logDiv.scrollTop = logDiv.scrollHeight;
+    console.log(msg);
 }
-
-logOnScreen("游戏脚本开始执行 V4.1...");
 
 // ==========================================
 // 1. 纯代码音效引擎
@@ -39,15 +52,40 @@ logOnScreen("游戏脚本开始执行 V4.1...");
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 let audioCtx;
 
-function initAudio() {
-    if (!audioCtx) audioCtx = new AudioContext();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    document.getElementById('hint').style.display = 'none';
+function initAudio(event) {
+    logOnScreen(`initAudio triggered by: ${event ? event.type : 'manual'}`);
+    try {
+        if (!audioCtx) {
+            audioCtx = new AudioContext();
+            logOnScreen(`AudioContext created. State: ${audioCtx.state}`);
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume().then(() => logOnScreen(`AudioContext resumed successfully.`));
+        } else {
+            logOnScreen(`AudioContext already running.`);
+        }
+        
+        const hint = document.getElementById('hint');
+        if (hint) hint.style.display = 'none';
+        
+        // 尝试播放一个极短、极小声的静音，强行激活iOS设备上的硬件引擎通道
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        gain.gain.value = 0.001;
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.01);
+        
+    } catch (e) {
+        logOnScreen(`initAudio Error: ${e.message}`, true);
+    }
 }
+
 // 监听任意点击或触摸，立刻激活声音。
-// 【核心修改】：现代浏览器的事件拦截问题，Canvas内的拖拽往往被封装成 PointerEvent，并被 Pixi 的事件系统吃掉（stopPropagation）。
-// 我们必须把监听器挂在 document 上，并且设置为【捕获阶段】(capture: true)，这样它绝对能在 Canvas 拦截之前触发！
 document.addEventListener('pointerdown', initAudio, { capture: true, once: true });
+document.addEventListener('touchstart', initAudio, { capture: true, once: true }); // 为旧版iOS补充兜底
+document.addEventListener('click', initAudio, { capture: true, once: true }); // 为桌面端鼠标点击补充兜底
 
 function playTone(freq, type, duration, vol=0.1) {
     if (!audioCtx) return;
