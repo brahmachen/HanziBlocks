@@ -281,10 +281,17 @@ app.ticker.add(() => {
         p.customData.shadowSprite.alpha += (p.customData.targetShadowAlpha - p.customData.shadowSprite.alpha) * 0.15;
         // ---------------------------------
         
-        // 【新增特效：浮空放大 与 速度形变】
+        // 【新增特效：浮空放大、拖拽偏移 与 速度形变】
         if (p.customData.isDragged && !isGameWon) {
             // 1. 浮空放大：比原本大 10%
             const liftScale = 1.1; 
+            
+            // 【核心优化：防遮挡偏移 (Finger Offset)】
+            // 当玩家抓起积木时，为了防止手指/鼠标指针完全遮挡住中部的文字，
+            // 我们让实际显示的图像(Container)在视觉上往【左上方】稍微偏移一点点。
+            // 但这仅仅是视觉偏移，Matter.js 的物理碰撞体 (body) 依然在鼠标真实位置，保证吸附手感不变。
+            p.customData.container.x = p.position.x - 20; 
+            p.customData.container.y = p.position.y - 40; 
             
             // 2. 速度形变：根据物理引擎的线速度拉长或压扁
             // v.x 控制宽度，v.y 控制高度。速度越快，形变越夸张
@@ -302,7 +309,9 @@ app.ticker.add(() => {
             p.customData.shadowSprite.y = 15 + p.velocity.y * 0.1;
             
         } else if (!isGameWon) {
-            // 没有被拖拽时的安全弹性缩放（吸附果冻回弹）
+            // 没有被拖拽时的安全位置和弹性缩放（吸附果冻回弹）
+            p.customData.container.x = p.position.x; // 松手后恢复与物理体对齐
+            p.customData.container.y = p.position.y;
             if (p.customData.bounceAnim > 0) {
                 p.customData.bounceAnim -= 0.08; 
                 const b = 1 + p.customData.bounceAnim * 0.3; 
@@ -324,7 +333,10 @@ app.ticker.add(() => {
         winAnimTick += 0.15;
         const bounce = Math.exp(-winAnimTick * 0.5) * Math.sin(winAnimTick * 5);
         pieces.forEach(p => {
-            // 胜利时的集体弹跳
+            // 胜利时的集体弹跳 (重置回物理真实坐标，防止漂移假象)
+            p.customData.container.x = p.position.x;
+            p.customData.container.y = p.position.y;
+            
             const b = 1 + bounce * 0.2;
             p.customData.sprite.scale.set(p.customData.baseScaleX * b, p.customData.baseScaleY * b);
         });
