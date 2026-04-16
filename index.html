@@ -113,6 +113,11 @@ function playSnapSound() {
     playTone(200, 'triangle', 0.15, 0.5);
 }
 
+// 【新增】错误/未吸附时的“噗”声 (木块掉落地板/无反应的短促低音)
+function playDropSound() {
+    playTone(150, 'square', 0.05, 0.15); // 非常短促且沉闷的“嗒”声，不会引起反感
+}
+
 function playWinSound() {
     playTone(523.25, 'sine', 0.5, 0.3);
     setTimeout(() => playTone(659.25, 'sine', 0.5, 0.3), 100);
@@ -325,9 +330,12 @@ Matter.Events.on(mConstraint, 'enddrag', function(event) {
         body.customData.sprite.tint = 0x34495e; 
         
         // 给它一个巨大的动画弹力值
-        body.customData.bounceAnim = 1.0;
-
+        body.customData.bounceAnim = 1;
+        playSnapSound();
         checkWinCondition();
+    } else {
+        // 【新增音效反馈】：如果你松手的时候不在对的地方，或者字块掉下去了，发出一声短促沉闷的木块敲击声
+        playDropSound();
     }
 });
 
