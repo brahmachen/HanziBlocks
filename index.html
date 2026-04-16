@@ -7,20 +7,44 @@
         body { margin: 0; padding: 0; overflow: hidden; background-color: #f5f4ef; display: flex; justify-content: center; align-items: center; height: 100vh; }
         canvas { box-shadow: 0 20px 50px rgba(0,0,0,0.1); border-radius: 12px; cursor: grab; }
         canvas:active { cursor: grabbing; }
-        #hint { position: absolute; top: 20px; color: #7f8c8d; font-family: sans-serif; pointer-events: none; padding: 10px 20px; background: rgba(255,255,255,0.8); border-radius: 20px; }
-        #restartBtn { position: absolute; top: 20px; right: 20px; padding: 10px 20px; font-size: 16px; font-weight: bold; font-family: sans-serif; background: #fff; border: 2px solid #e0ddd3; border-radius: 20px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.05); color: #7f8c8d; transition: all 0.2s; z-index: 10; }
+        
+        /* 【新增】开始游戏遮罩屏 */
+        #startOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(245, 244, 239, 0.9); z-index: 1000; display: flex; flex-direction: column; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
+        #startTitle { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 48px; color: #2c3e50; font-weight: bold; margin-bottom: 20px; text-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        #startSub { font-family: sans-serif; font-size: 18px; color: #7f8c8d; margin-bottom: 40px; }
+        #startBtn { padding: 15px 40px; font-size: 24px; font-weight: bold; font-family: sans-serif; background: #e67e22; border: none; border-radius: 30px; cursor: pointer; box-shadow: 0 10px 20px rgba(230, 126, 34, 0.3); color: white; transition: all 0.2s; }
+        #startBtn:hover { transform: translateY(-3px) scale(1.05); box-shadow: 0 15px 25px rgba(230, 126, 34, 0.4); background: #d35400; }
+        #startBtn:active { transform: translateY(0) scale(0.95); }
+        
+        #hint { display: none; } /* 废弃旧的纯文字提示 */
+        #restartBtn { position: absolute; top: 20px; right: 20px; padding: 10px 20px; font-size: 16px; font-weight: bold; font-family: sans-serif; background: #fff; border: 2px solid #e0ddd3; border-radius: 20px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.05); color: #7f8c8d; transition: all 0.2s; z-index: 10; display: none; } /* 初始隐藏，开始后显示 */
         #restartBtn:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(0,0,0,0.1); color: #d35400; border-color: #d35400; }
         #restartBtn:active { transform: translateY(0); }
-        #debugLog { position: absolute; bottom: 20px; left: 20px; color: #e74c3c; font-family: monospace; font-size: 12px; pointer-events: none; background: rgba(0,0,0,0.8); padding: 10px; border-radius: 8px; z-index: 100; max-height: 200px; overflow-y: auto; width: 300px; display: none; }
+        #debugLog { display: none !important; } /* 隐藏调试日志 */
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
 </head>
 <body>
-    <div id="hint">点我一下，或直接拖拽文字以激活音效</div>
+    <!-- 【新增】开始游戏遮罩屏 -->
+    <div id="startOverlay">
+        <div id="startTitle">汉字积木</div>
+        <div id="startSub">拖拽部首，拼出神奇汉字！</div>
+        <button id="startBtn" onclick="startGame()">开始游戏</button>
+    </div>
+
     <button id="restartBtn" onclick="location.reload()">↺ 重新开始</button>
     <div id="debugLog"></div>
 <script>
+function startGame() {
+    // 隐藏遮罩，显示重新开始按钮
+    document.getElementById('startOverlay').style.display = 'none';
+    document.getElementById('restartBtn').style.display = 'block';
+    
+    // 初始化并激活音频引擎 (完美符合用户主动点击的现代浏览器规范)
+    initAudio();
+}
+
 function logOnScreen(msg, isError = false) {
     const logDiv = document.getElementById('debugLog');
     logDiv.style.display = 'block';
@@ -38,8 +62,8 @@ function logOnScreen(msg, isError = false) {
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 let audioCtx;
 
-function initAudio(event) {
-    logOnScreen(`initAudio triggered by: ${event ? event.type : 'manual'}`);
+function initAudio() {
+    logOnScreen(`initAudio triggered`);
     try {
         if (!audioCtx) {
             audioCtx = new AudioContext();
@@ -50,9 +74,6 @@ function initAudio(event) {
         } else {
             logOnScreen(`AudioContext already running.`);
         }
-        
-        const hint = document.getElementById('hint');
-        if (hint) hint.style.display = 'none';
         
         // 尝试播放一个极短、极小声的静音，强行激活iOS设备上的硬件引擎通道
         const osc = audioCtx.createOscillator();
@@ -68,10 +89,10 @@ function initAudio(event) {
     }
 }
 
-// 监听任意点击或触摸，立刻激活声音。
-document.addEventListener('pointerdown', initAudio, { capture: true, once: true });
-document.addEventListener('touchstart', initAudio, { capture: true, once: true }); // 为旧版iOS补充兜底
-document.addEventListener('click', initAudio, { capture: true, once: true }); // 为桌面端鼠标点击补充兜底
+// 【废弃旧的全局监听拦截法】改用标准的“开始游戏”按钮触发
+// document.addEventListener('pointerdown', initAudio, { capture: true, once: true });
+// document.addEventListener('touchstart', initAudio, { capture: true, once: true });
+// document.addEventListener('click', initAudio, { capture: true, once: true });
 
 function playTone(freq, type, duration, vol=0.1) {
     if (!audioCtx) return;
