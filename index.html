@@ -158,7 +158,13 @@ function createVectorPiece(svgString, startX, startY, isLeftPart) {
         shadowSprite.texture = sprite.texture;
         shadowSprite.width = VISUAL_SIZE; shadowSprite.height = VISUAL_SIZE;
         shadowSprite.anchor.set(isLeftPart ? 0.25 : 0.75, 0.5);
-        shadowSprite.x = 0; shadowSprite.y = 20; // 阴影改到正下方
+        shadowSprite.x = 0; shadowSprite.y = 15; // 阴影改到正下方
+        
+        // 【核心优化】使用 PixiJS 内置的高斯模糊滤镜 (Gaussian Blur)，让阴影边缘彻底柔和，告别硬边界！
+        const blurFilter = new PIXI.filters.BlurFilter();
+        blurFilter.blur = 10;      // 模糊扩散半径 (数值越大越柔和)
+        blurFilter.quality = 3;    // 渲染质量拉满
+        shadowSprite.filters = [blurFilter];
 
         body.customData.baseScaleX = sprite.scale.x;
         body.customData.baseScaleY = sprite.scale.y;
@@ -193,7 +199,7 @@ Matter.Events.on(mConstraint, 'startdrag', (event) => {
         } else {
             // 【新增】开始拖拽：标记状态，阴影设定目标透明度并置顶
             event.body.customData.isDragged = true;
-            event.body.customData.targetShadowAlpha = 0.25; // 抓起时阴影变深
+            event.body.customData.targetShadowAlpha = 0.4; // 抓起时因为有模糊效果，透明度可以稍微提高一点来凸显立体感
             app.stage.addChild(event.body.customData.container); // 移到顶层显示
         }
     }
@@ -290,10 +296,10 @@ app.ticker.add(() => {
             const finalScaleY = p.customData.baseScaleY * liftScale * stretchY / stretchX;
             
             p.customData.shadowSprite.scale.set(finalScaleX * 1.05, finalScaleY * 1.05);
-            p.customData.targetShadowAlpha = 0.25 - Math.min(Math.abs(p.velocity.x + p.velocity.y)*0.003, 0.15);
+            p.customData.targetShadowAlpha = 0.4 - Math.min(Math.abs(p.velocity.x + p.velocity.y)*0.003, 0.15);
             // 抓起和拖拽时，阴影重心都在正下方，仅根据拖拽速度发生轻微物理形变错位
-            p.customData.shadowSprite.x = 0 + p.velocity.x * 0.15;
-            p.customData.shadowSprite.y = 20 + p.velocity.y * 0.15;
+            p.customData.shadowSprite.x = 0 + p.velocity.x * 0.1;
+            p.customData.shadowSprite.y = 15 + p.velocity.y * 0.1;
             
         } else if (!isGameWon) {
             // 没有被拖拽时的安全弹性缩放（吸附果冻回弹）
